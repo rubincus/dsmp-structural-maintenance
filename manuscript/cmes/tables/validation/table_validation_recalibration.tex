@@ -1,0 +1,15 @@
+\begin{table}[t]
+\centering
+\scriptsize
+\caption{Out-of-fold probability recalibration results over 50 seeds. Values are medians with bootstrap 95\% intervals. Lower values are better.}
+\label{tab:probability-recalibration}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}p{0.25\textwidth}p{0.22\textwidth}p{0.22\textwidth}p{0.22\textwidth}}
+\toprule
+Probability model & Brier & ECE & MSE to $P_f$ \\
+\midrule
+Gamma--Poisson predictive & 0.492 [0.487, 0.500] & 0.565 [0.557, 0.575] & 0.463 [0.459, 0.473] \\
+Platt recalibration & 0.171 [0.168, 0.177] & 0.033 [0.030, 0.041] & 0.144 [0.141, 0.146] \\
+Isotonic recalibration & 0.181 [0.174, 0.187] & 0.057 [0.047, 0.070] & 0.152 [0.149, 0.158] \\
+\bottomrule
+\end{tabular*}
+\end{table}

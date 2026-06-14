@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dynamic-structural-maintenance-prioritization"
+version = "0.1.0"
+description = "Python modeling codes for dynamic structural maintenance prioritization"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "matplotlib>=3.7",
+    "scipy>=1.10",
+    "networkx>=3.0",
+    "pymoo>=0.6.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

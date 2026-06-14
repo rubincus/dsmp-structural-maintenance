@@ -1,0 +1,14 @@
+name: dsmp-validation
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.10
+  - numpy>=1.24
+  - pandas>=2.0
+  - matplotlib>=3.7
+  - scipy>=1.10
+  - networkx>=3.0
+  - pip
+  - pip:
+      - pymoo>=0.6.1
+      - -e .

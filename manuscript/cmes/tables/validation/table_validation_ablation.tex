@@ -1,0 +1,22 @@
+\begin{table}[t]
+\centering
+\scriptsize
+\caption{Single-seed diagnostic ablation at budget level 12. This table is used to inspect mechanisms; the 50-seed results in Tables~\ref{tab:validation-main}--\ref{tab:paired-regret-tests} are the primary performance evidence.}
+\label{tab:validation-ablation}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}p{0.35\textwidth}rrrr}
+\toprule
+Model variant & Regret & Risk reduction & Downtime reduction & Cost \\
+\midrule
+DSMP + VoI, uncalibrated probability & 2.037 & 15.299 & 1719.1 & 8.70 \\
+DSMP direct, uncalibrated probability & 2.570 & 14.767 & 1661.0 & 8.70 \\
+DSMP direct, Platt-recalibrated & 2.800 & 14.537 & 1609.5 & 8.70 \\
+DSMP direct with true $P_f$ & 0.932 & 16.405 & 1875.0 & 8.70 \\
+No recovery term & 3.322 & 14.015 & 1530.2 & 9.00 \\
+No uncertainty term & 4.286 & 13.050 & 1512.5 & 11.40 \\
+No VoI gate & 5.139 & 12.198 & 1390.8 & 11.40 \\
+No graph augmentation & 3.863 & 13.474 & 1581.7 & 11.40 \\
+Conditional RTO & 2.706 & 14.630 & 1615.9 & 9.00 \\
+Portfolio min--max & 2.154 & 15.182 & 1755.5 & 9.60 \\
+\bottomrule
+\end{tabular*}
+\end{table}

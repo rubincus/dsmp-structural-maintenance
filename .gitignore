@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python packaging
+build/
+dist/
+*.egg-info/
+
+# Generated experiment folders
+output/
+output_*/
+validation_smoke*/
+validation_script_smoke/
+validation_recalibration_smoke*/
+validation_benchmark_*/
+validation_design_results/
+output_validation*/
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+*.spl
+build_pdflatex*.out
+build_bibtex.out
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

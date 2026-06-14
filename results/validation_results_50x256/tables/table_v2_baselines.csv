@@ -1,0 +1,18 @@
+method,information
+proposed_full,"predictive probability, consequence, recovery, uncertainty, graph, VoI"
+proposed_recalibrated,"cross-fitted Platt probability recalibration plus consequence, recovery, uncertainty, graph, VoI"
+proposed_true_probability,sensitivity run with simulated true failure probability inside the proposed score
+dsmp_direct,cost-aware direct intervention using the DSMP score without information actions
+dsmp_direct_recalibrated,cost-aware direct intervention using the recalibrated DSMP score
+dsmp_direct_true_probability,cost-aware direct intervention using simulated true probability in the DSMP score
+no_voi,same score without EVSI/NVI routing
+conditional_rto,recovery conditioned on predicted failure
+risk_only,"Bayesian probability times consequence, intervention actions only"
+severity_only,condition severity only
+consequence_only,consequence only
+static_rcm,severity and functional class
+robust_topsis,"robust TOPSIS-style MCDA over probability, consequence, recovery, and uncertainty"
+nsga2_pareto,"pymoo NSGA-II constrained multiobjective search over residual risk, cost, recovery exposure, and residual uncertainty"
+true_probability_upper_bound,upper-bound risk policy using simulated true probability and consequence
+voi_only,uncertainty-driven inspection
+greedy_cost_risk,"benefit-cost heuristic, intervention actions only"

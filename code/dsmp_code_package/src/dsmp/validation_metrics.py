@@ -86,12 +86,19 @@ def fit_isotonic_regression(pred, observed) -> tuple[np.ndarray, np.ndarray]:
     """Fit a one-dimensional isotonic calibrator with the PAVA algorithm."""
     x = np.asarray(pred, dtype=float)
     y = np.asarray(observed, dtype=float)
-    order = np.argsort(x)
+    order = np.argsort(x, kind="mergesort")
     x_sorted = x[order]
     y_sorted = y[order]
+
+    # Equal predictor values must share one fitted value. Consolidating them
+    # before PAVA also makes the result independent of the sort implementation
+    # used by a particular NumPy version.
+    x_unique, starts, counts = np.unique(x_sorted, return_index=True, return_counts=True)
+    y_sums = np.add.reduceat(y_sorted, starts)
     blocks: list[dict[str, float]] = []
-    for xi, yi in zip(x_sorted, y_sorted):
-        blocks.append({"x_sum": float(xi), "weight": 1.0, "y_sum": float(yi)})
+    for xi, count, y_sum in zip(x_unique, counts, y_sums):
+        weight = float(count)
+        blocks.append({"x_sum": float(xi) * weight, "weight": weight, "y_sum": float(y_sum)})
         while len(blocks) >= 2:
             left = blocks[-2]
             right = blocks[-1]

@@ -1,0 +1,12 @@
+quantity,value
+event_rate_median_over_seeds,0.7616666666666667
+event_rate_min_over_seeds,0.71
+event_rate_max_over_seeds,0.8333333333333334
+irreducible_brier_median_over_seeds,0.028183568318684897
+share_p_true_below_0.05_median,0.16499999999999998
+share_p_true_above_0.95_median,0.6716666666666666
+share_p_true_between_median,0.16833333333333333
+voi_gate_open_assets_per_seed_mean,0.42
+voi_gate_open_assets_per_seed_max,2.0
+U_norm_q90_median_over_seeds,0.4688865544914069
+U_norm_max_median_over_seeds,0.6047035208271581

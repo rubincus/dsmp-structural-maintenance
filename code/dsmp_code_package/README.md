@@ -1,6 +1,6 @@
 # Dynamic Structural Maintenance Prioritization — Python Modeling Codes
 
-This package contains the `.py` implementation of the modeling experiments and algorithms described in the manuscript **Dynamic Structural Maintenance Prioritization Using Bayesian Failure Probability, Resilience Metrics, and Epistemic Uncertainty**.
+This package contains the `.py` implementation of the Dynamic Structural Maintenance Prioritization (DSMP) experiments and algorithms.
 
 The code implements the full computational workflow:
 
@@ -19,6 +19,7 @@ The code implements the full computational workflow:
 13. Weight-simplex robustness and rank-stability analysis.
 14. PDF figure regeneration.
 15. Unit tests for boundedness, monotonicity, and classical-risk limiting case.
+16. Multi-seed weight sensitivity, common-rule ablation, cross-seed recalibration, and base-rate diagnostics.
 
 ## Quick start
 
@@ -35,7 +36,7 @@ The pipeline writes:
 - `output/tables/*.csv`
 - `output/figures/*.pdf`
 
-Figure filenames follow the manuscript numbering for the implemented reproducibility
+Figure filenames follow the established numbering for the implemented reproducibility
 figures, including `fig04`, `fig05`, `fig06`, `fig07`, `fig09`, `fig10`, `fig11`,
 `fig12`, `fig13`, `fig15`, `fig16`, `fig17`, and `fig18`.
 
@@ -83,6 +84,17 @@ The validation pipeline writes:
 - `src/dsmp/sensitivity.py`: rank stability and weight robustness.
 - `src/dsmp/figures.py`: figure generation.
 - `src/dsmp/run_all_experiments.py`: full experiment driver.
+- `src/dsmp/revision_experiments.py`: supplementary multi-seed sensitivity, ablation, cross-seed recalibration, and base-rate analyses.
+- `scripts/run_revision_experiments.py`: command-line driver for the supplementary analyses.
+- `scripts/regenerate_figures.py`: consistent-label figure regeneration from stored result tables.
+
+## Supplementary multi-seed analyses
+
+```bash
+python scripts/run_revision_experiments.py --seed 42 --n-assets 300 --seeds 50 --mc-paths 256 --out revision_results
+```
+
+The run writes the S1--S4 CSV summaries, detailed seed-level records, and the weight-sensitivity figure to the selected output directory.
 
 ## Scientific note
 

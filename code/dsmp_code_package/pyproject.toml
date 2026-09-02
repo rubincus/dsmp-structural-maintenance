@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dynamic-structural-maintenance-prioritization"
-version = "0.1.0"
+version = "0.2.0"
 description = "Python modeling codes for dynamic structural maintenance prioritization"
 requires-python = ">=3.10"
 dependencies = [

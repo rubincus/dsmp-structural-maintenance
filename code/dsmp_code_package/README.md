@@ -20,6 +20,7 @@ The code implements the full computational workflow:
 14. PDF figure regeneration.
 15. Unit tests for boundedness, monotonicity, and classical-risk limiting case.
 16. Multi-seed weight sensitivity, common-rule ablation, cross-seed recalibration, and base-rate diagnostics.
+17. Hazard-regime, probability-quality, cascade-aware, two-epoch information, condition-informed calibration, and common-rule budget robustness analyses.
 
 ## Quick start
 
@@ -85,7 +86,9 @@ The validation pipeline writes:
 - `src/dsmp/figures.py`: figure generation.
 - `src/dsmp/run_all_experiments.py`: full experiment driver.
 - `src/dsmp/revision_experiments.py`: supplementary multi-seed sensitivity, ablation, cross-seed recalibration, and base-rate analyses.
+- `src/dsmp/robustness_experiments.py`: supplementary robustness experiments S5--S10.
 - `scripts/run_revision_experiments.py`: command-line driver for the supplementary analyses.
+- `scripts/run_robustness_experiments.py`: command-line driver for robustness experiments S5--S10.
 - `scripts/regenerate_figures.py`: consistent-label figure regeneration from stored result tables.
 
 ## Supplementary multi-seed analyses
@@ -95,6 +98,14 @@ python scripts/run_revision_experiments.py --seed 42 --n-assets 300 --seeds 50 -
 ```
 
 The run writes the S1--S4 CSV summaries, detailed seed-level records, and the weight-sensitivity figure to the selected output directory.
+
+## Supplementary robustness analyses
+
+```bash
+python scripts/run_robustness_experiments.py --seed 42 --n-assets 300 --seeds 50 --mc-paths 256 --out ../../results/robustness_results
+```
+
+The run writes the S5--S10 CSV summaries, detailed seed-level records, and robustness figures to the selected output directory.
 
 ## Scientific note
 

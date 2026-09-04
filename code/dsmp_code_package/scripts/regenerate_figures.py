@@ -104,7 +104,8 @@ def plot_regret(tables: Path, path: Path) -> None:
         g = m[m["method"] == method].groupby("budget", as_index=False)["regret"].median()
         if g.empty:
             continue
-        ax.plot(g["budget"], g["regret"], label=label(method), markersize=5, **styles.get(method, {}))
+        lab = label(method) + (", threshold-mapped" if method == "static_rcm" else "")  # common-rule values are given in the text (revision)
+        ax.plot(g["budget"], g["regret"], label=lab, markersize=5, **styles.get(method, {}))
     ax.set_xlabel("Budget level (replacement-equivalent cost units)")
     ax.set_ylabel("Median regret over 50 seeds\n(normalized expected-loss units)")
     ax.set_xticks([8, 12, 16, 20])

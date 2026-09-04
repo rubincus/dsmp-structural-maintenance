@@ -202,6 +202,12 @@ class ValidationConfig:
     graph_gamma: float = 0.40
     graph_zeta: float = 0.35
     graph_zeta_r: float = 0.35
+    # Revision-stage robustness parameter: multiplies the initial demand of every asset.
+    # The default of 1.0 reproduces the reported protocol exactly; values below 1.0
+    # generate lower-hazard regimes (Section 6.6 of the revised manuscript).
+    demand_scale: float = 1.0
+    # Multiplies the yearly degradation increments (history and Monte Carlo step); 1.0 = reported protocol.
+    degradation_scale: float = 1.0
 
 
 def _beta_from_mean(mean: float, concentration: float, rng: np.random.Generator) -> float:
@@ -330,18 +336,18 @@ def generate_ground_truth_portfolio(seed: int, config: ValidationConfig) -> tupl
         load = rng.lognormal(mean=0.0, sigma=0.28, size=n)
         process_noise = rng.normal(0.0, 0.018, size=n)
         increment = class_delta + mode_kappa * environmental_exposure + mode_phi * np.log1p(load) + random_effect + process_noise
-        x = np.clip(x + increment, 0.0, 1.0)
+        x = np.clip(x + float(config.degradation_scale) * increment, 0.0, 1.0)
         rate = class_lambda0 * np.exp(mode_a * x + mode_b * load + mode_d * environmental_exposure + 2.5 * random_effect)
         total_events += rng.poisson(np.clip(rate, 0.001, 5.0))
 
     resistance0 = rng.lognormal(mean=0.0, sigma=0.08, size=n)
-    demand0 = resistance0 * np.clip(rng.normal(_class_values(classes, "demand"), 0.06), 0.45, 0.95)
+    demand0 = resistance0 * np.clip(rng.normal(_class_values(classes, "demand"), 0.06), 0.45, 0.95) * float(config.demand_scale)
     x_mc = np.empty((n, config.mc_paths), dtype=float)
     load_mc = rng.lognormal(mean=0.0, sigma=0.30, size=(n, config.mc_paths))
     for j in range(config.mc_paths):
         noise = rng.normal(0.0, 0.020, size=n)
         x_mc[:, j] = np.clip(
-            x + class_delta + mode_kappa * environmental_exposure + mode_phi * np.log1p(load_mc[:, j]) + random_effect + noise,
+            x + float(config.degradation_scale) * (class_delta + mode_kappa * environmental_exposure + mode_phi * np.log1p(load_mc[:, j]) + random_effect + noise),
             0.0,
             1.0,
         )
@@ -760,7 +766,7 @@ def score_for_method(df: pd.DataFrame, method: str) -> pd.Series:
     if method == "voi_only":
         return (df["U_norm"] * df["C_norm"]).clip(0.0, 1.0)
     if method == "greedy_cost_risk":
-        return df["dynamic_score_graph_pred"]
+        return df["static_risk_pred"]  # ranking metric of the score that this policy actually uses (revision fix)
     if method == "robust_topsis":
         return df["robust_topsis_score"]
     if method == "true_probability_upper_bound":
@@ -1139,7 +1145,7 @@ def plot_regret(metrics: pd.DataFrame, path: Path) -> None:
         g = group.groupby("budget", as_index=False)["regret"].median()
         ax.plot(g["budget"], g["regret"], marker="o", label=display_method_label(method))
     ax.set_xlabel("Budget")
-    ax.set_ylabel("Median regret vs ground-truth oracle")
+    ax.set_ylabel("Median regret vs perfect-information greedy reference")
     ax.set_title("Regret-vs-budget curves")
     ax.legend(fontsize=7, ncol=2)
     _save(fig, path)

@@ -1,4 +1,4 @@
-"""Run the second-revision checks (S11-S12)."""
+"""Run the second-revision checks (S11-S14)."""
 from pathlib import Path
 import sys
 

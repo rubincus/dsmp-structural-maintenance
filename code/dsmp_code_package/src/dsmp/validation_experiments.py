@@ -209,10 +209,12 @@ class ValidationConfig:
     # Multiplies the yearly degradation increments (history and Monte Carlo step); 1.0 = reported protocol.
     degradation_scale: float = 1.0
     # Second-revision check (S13): "own" (reported protocol) builds the recovery time from the
-    # asset's own degradation state; "permuted" uses a within-class permutation of the degradation
-    # states, which keeps the class structure and the distribution of recovery times but removes
-    # their asset-level association with degradation. The permutation uses a separate random
-    # stream, so every other variable of the portfolio is unchanged.
+    # asset's own degradation state; "permuted" feeds the recovery-time model with a within-class
+    # permutation of the degradation states, while the network terms and the lognormal delay stay
+    # with the asset. This keeps the class structure and the within-class distribution of the
+    # degradation input (not exactly the distribution of the final recovery times) and removes the
+    # direct link between recovery time and the asset's own degradation. The permutation uses a
+    # separate random stream, so every other variable of the portfolio is unchanged.
     rto_degradation_coupling: str = "own"
 
 

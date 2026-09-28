@@ -17,9 +17,14 @@ S12. Additivity check of the score, Eq. (16): interaction-aware form, Eq. (18), 
 S13. Information carried by the recovery time. In the generator the recovery time grows with
      the degradation state, so it is itself a condition indicator. The check repeats the
      comparison of the two reduced forms (and of the greedy rule without recovery term) when
-     (a) the recovery time is decoupled from the asset's degradation state by a within-class
-     permutation (ValidationConfig.rto_degradation_coupling = "permuted"), and (b) the score
-     uses a recovery time observed with lognormal error (the loss keeps the true one).
+     (a) the degradation state that enters the recovery-time model is permuted among the assets
+     of each structural class, while the centrality, cascade, and lognormal delay terms stay
+     with the asset (ValidationConfig.rto_degradation_coupling = "permuted"), and (b) the score
+     uses a recovery time observed with multiplicative lognormal error, hours x exp(e) with e
+     normal of standard deviation 0.25 or 0.50 on the log scale (the loss keeps the true one).
+S14. Inspection-targeting rules of the two-epoch protocol (S8) compared at equal numbers of
+     inspections, in pairs that change one element of the targeting at a time: the epistemic
+     factor with the same consequence definition, or the graph augmentation of the consequence.
 
 All defaults of the validation protocol are unchanged; the reported regime is
 (degradation_scale, demand_scale) = (1, 1).
@@ -35,7 +40,7 @@ import pandas as pd
 from scipy.stats import kendalltau, spearmanr
 
 from .revision_experiments import _direct_plan_from_score, _median_summary, _paired
-from .robustness_experiments import REGIMES, cross_fitted_covariate_recalibration
+from .robustness_experiments import REGIMES, cross_fitted_covariate_recalibration, two_epoch_policy, two_epoch_reference_loss
 from .validation_experiments import (
     ValidationConfig,
     evaluate_plan,
@@ -310,29 +315,75 @@ def run_recovery_information_check(config: ValidationConfig, budget: float, out_
 
 
 # ----------------------------------------------------------------------------
-# S14: inspection-targeting rules compared at equal numbers of inspections (from the S8 records)
+# S14: inspection-targeting rules compared at equal numbers of inspections
 # ----------------------------------------------------------------------------
+# Two-epoch protocol of S8 (robustness_experiments.two_epoch_policy, same portfolios, resources,
+# update, and evaluation). The rules are paired so that each comparison changes one element of
+# the targeting: the epistemic factor (U x C against C with the same consequence definition), the
+# graph augmentation of the consequence (C^G against C), or targeting against random selection.
+# The rules of S8 are recomputed here with the same random streams, so their rows coincide with
+# those of S8_two_epoch_voi_long.csv.
+INSPECTION_RULES = [
+    ("inspect_top30_consequence", "top_consequence", 30),
+    ("inspect_top60_consequence", "top_consequence", 60),
+    ("inspect_top30_consequence_no_graph", "top_consequence_no_graph", 30),
+    ("inspect_top60_consequence_no_graph", "top_consequence_no_graph", 60),
+    ("inspect_top30_uncertainty_x_consequence", "top_uncertainty_consequence", 30),
+    ("inspect_top60_uncertainty_x_consequence", "top_uncertainty_consequence", 60),
+    ("inspect_top30_uncertainty_x_graph_consequence", "top_uncertainty_graph_consequence", 30),
+    ("inspect_top60_uncertainty_x_graph_consequence", "top_uncertainty_graph_consequence", 60),
+    ("inspect_random60", "random", 60),
+]
+# (rule, compared_with, contrast); effect = regret(rule) - regret(compared_with), negative = rule better.
 INSPECTION_PAIRS = [
-    ("inspect_top30_uncertainty_x_consequence", "inspect_top30_consequence"),
-    ("inspect_top60_uncertainty_x_consequence", "inspect_top60_consequence"),
-    ("inspect_top60_consequence", "inspect_random60"),
-    ("inspect_top60_uncertainty_x_consequence", "inspect_random60"),
-    ("inspect_top60_score", "inspect_random60"),
+    ("inspect_top30_uncertainty_x_consequence", "inspect_top30_consequence_no_graph", "epistemic factor, consequence without graph terms"),
+    ("inspect_top60_uncertainty_x_consequence", "inspect_top60_consequence_no_graph", "epistemic factor, consequence without graph terms"),
+    ("inspect_top30_uncertainty_x_graph_consequence", "inspect_top30_consequence", "epistemic factor, graph-augmented consequence"),
+    ("inspect_top60_uncertainty_x_graph_consequence", "inspect_top60_consequence", "epistemic factor, graph-augmented consequence"),
+    ("inspect_top30_consequence", "inspect_top30_consequence_no_graph", "graph augmentation of the consequence"),
+    ("inspect_top60_consequence", "inspect_top60_consequence_no_graph", "graph augmentation of the consequence"),
+    ("inspect_top60_consequence", "inspect_random60", "targeting against random selection"),
+    ("inspect_top60_consequence_no_graph", "inspect_random60", "targeting against random selection"),
+    ("inspect_top60_uncertainty_x_consequence", "inspect_random60", "targeting against random selection"),
+    ("inspect_top60_uncertainty_x_graph_consequence", "inspect_random60", "targeting against random selection"),
 ]
 
 
-def compare_inspection_rules(s8_long_path: Path, out_dir: Path, sigma_obs: float = 0.05, seed: int = 42) -> pd.DataFrame:
-    """Paired comparison of inspection-targeting rules with the same number of inspected assets and
-    the same resources; effect = regret(first rule) - regret(second rule), negative = first rule better."""
-    long = pd.read_csv(s8_long_path)
-    long = long[long["sigma_obs"] == sigma_obs]
-    rows = []
-    for resource_model, g in long.groupby("resource_model", sort=False):
-        piv = g.pivot(index="seed", columns="policy", values="regret_total")
+def run_inspection_rules(config: ValidationConfig, budget: float, out_dir: Path) -> pd.DataFrame:
+    """Run the targeting rules of INSPECTION_RULES in the two-epoch protocol of S8 (reported regime)."""
+    capacity = budget * config.capacity_per_budget
+    portfolios = [(config.seed + k, generate_ground_truth_portfolio(config.seed + k, config)[0]) for k in range(config.n_seeds)]
+    records = []
+    for resource_model in ("shared", "budget_only", "dedicated"):
+        for sigma_obs in (0.05, 0.20):
+            for seed, df in portfolios:
+                reference_total = two_epoch_reference_loss(df, budget, capacity)
+                for name, rule, param in INSPECTION_RULES:
+                    res = two_epoch_policy(df, config, seed, budget, capacity, rule, param, sigma_obs,
+                                           np.random.default_rng(seed + 9001), resource_model=resource_model)
+                    res.update({"policy": name, "rule": rule, "param": param, "sigma_obs": sigma_obs, "resource_model": resource_model,
+                                "seed": seed, "regret_total": res["total_loss"] - reference_total, "oracle_total": reference_total})
+                    records.append(res)
+        print(f"  S14 resource model {resource_model} done")
+    long = pd.DataFrame(records)
+    long.to_csv(out_dir / "S14_inspection_rules_long.csv", index=False)
+    return long
+
+
+def compare_inspection_rules(long: pd.DataFrame, out_dir: Path, seed: int = 42) -> pd.DataFrame:
+    """Paired comparisons of INSPECTION_PAIRS (same number of inspected assets, same resources), with
+    Holm adjustment within each resource model and noise level; also writes the per-rule medians."""
+    rows, summary = [], []
+    for (resource_model, sigma_obs), g in long.groupby(["resource_model", "sigma_obs"], sort=False):
+        piv = g.pivot(index="seed", columns="policy", values="regret_total").sort_index()
+        for name, _, _ in INSPECTION_RULES:
+            s = _median_summary(piv[name].to_numpy(), seed=seed)
+            summary.append({"resource_model": resource_model, "sigma_obs": sigma_obs, "policy": name, "n_seeds": len(piv),
+                            "regret_median": s["median"], "regret_ci_low": s["ci_low"], "regret_ci_high": s["ci_high"]})
         block = []
-        for a, b in INSPECTION_PAIRS:
+        for a, b, contrast in INSPECTION_PAIRS:
             pr = _paired(piv[b].to_numpy(), piv[a].to_numpy(), seed=seed)
-            block.append({"resource_model": resource_model, "rule": a, "compared_with": b,
+            block.append({"resource_model": resource_model, "sigma_obs": sigma_obs, "contrast": contrast, "rule": a, "compared_with": b,
                           "regret_rule_median": float(piv[a].median()), "regret_compared_median": float(piv[b].median()),
                           "effect_rule_minus_compared": pr["median_effect"], "effect_ci_low": pr["effect_ci_low"], "effect_ci_high": pr["effect_ci_high"],
                           "p_value": pr["p_value"], "rule_better_fraction": float(np.mean(piv[a].to_numpy() < piv[b].to_numpy()))})
@@ -341,6 +392,7 @@ def compare_inspection_rules(s8_long_path: Path, out_dir: Path, sigma_obs: float
         rows.append(block)
     out = pd.concat(rows, ignore_index=True)
     out.to_csv(out_dir / "S14_inspection_rules_equal_n.csv", index=False)
+    pd.DataFrame(summary).to_csv(out_dir / "S14_inspection_rules_summary.csv", index=False)
     return out
 
 
@@ -358,14 +410,14 @@ def run_all(out_dir: Path, config: ValidationConfig, budget: float = 12.0, skip:
         t0 = time.perf_counter()
         run_recovery_information_check(config, budget, out_dir)
         print(f"S13 recovery-information check done in {time.perf_counter() - t0:.1f} s")
-    s8_long = out_dir.parent / "robustness_results" / "S8_two_epoch_voi_long.csv"
-    if "S14" not in skip and s8_long.exists():
-        compare_inspection_rules(s8_long, out_dir, seed=config.seed)
-        print("S14 inspection-rule comparison written")
+    if "S14" not in skip:
+        t0 = time.perf_counter()
+        compare_inspection_rules(run_inspection_rules(config, budget, out_dir), out_dir, seed=config.seed)
+        print(f"S14 inspection-rule comparison done in {time.perf_counter() - t0:.1f} s")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the second-revision checks (S11-S13).")
+    parser = argparse.ArgumentParser(description="Run the second-revision checks (S11-S14).")
     parser.add_argument("--out", type=Path, default=Path("revision2_results"))
     parser.add_argument("--seed", type=int, default=ValidationConfig().seed)
     parser.add_argument("--n-assets", type=int, default=ValidationConfig().n_assets)

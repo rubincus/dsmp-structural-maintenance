@@ -90,8 +90,8 @@ The validation pipeline writes:
 - `src/dsmp/robustness_experiments.py`: supplementary robustness experiments S5--S10.
 - `scripts/run_revision_experiments.py`: command-line driver for the supplementary analyses.
 - `scripts/run_robustness_experiments.py`: command-line driver for robustness experiments S5--S10.
-- `src/dsmp/revision2_checks.py`: second-revision checks S11--S12.
-- `scripts/run_revision2_checks.py`: command-line driver for the checks S11--S12.
+- `src/dsmp/revision2_checks.py`: second-revision checks S11--S14.
+- `scripts/run_revision2_checks.py`: command-line driver for the checks S11--S14.
 - `scripts/make_revision2_tables.py`: LaTeX rows of Table 17 from the S11 result files.
 - `scripts/regenerate_figures.py`: consistent-label figure regeneration from stored result tables.
 

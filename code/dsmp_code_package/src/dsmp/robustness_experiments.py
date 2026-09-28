@@ -389,10 +389,14 @@ def _priority_order(inspect: np.ndarray, rule: str, param: float, u: np.ndarray,
     idx = np.flatnonzero(inspect)
     if rule == "top_consequence":
         key = -df["C_graph"].to_numpy(dtype=float)[idx]
+    elif rule == "top_consequence_no_graph":
+        key = -df["C_norm"].to_numpy(dtype=float)[idx]
     elif rule == "top_score":
         key = -dsmp_score(belief, u).to_numpy()[idx]
     elif rule in ("top_uncertainty_consequence", "gate"):
         key = -(u * df["C_norm"].to_numpy(dtype=float))[idx]
+    elif rule == "top_uncertainty_graph_consequence":
+        key = -(u * df["C_graph"].to_numpy(dtype=float))[idx]
     else:
         key = np.arange(len(idx))
     return idx[np.argsort(key, kind="mergesort")]
@@ -437,6 +441,14 @@ def two_epoch_policy(df: pd.DataFrame, config: ValidationConfig, seed: int, budg
         inspect[order[: int(param)]] = True
     elif rule == "top_consequence":
         order = np.argsort(-df["C_graph"].to_numpy(dtype=float))
+        inspect[order[: int(param)]] = True
+    # Rules added for the equal-consequence comparisons of S14 (revision2_checks.py): consequence
+    # without graph augmentation, and uncertainty times graph-augmented consequence.
+    elif rule == "top_consequence_no_graph":
+        order = np.argsort(-df["C_norm"].to_numpy(dtype=float))
+        inspect[order[: int(param)]] = True
+    elif rule == "top_uncertainty_graph_consequence":
+        order = np.argsort(-(u * c_graph))
         inspect[order[: int(param)]] = True
     elif rule == "top_score":
         order = np.argsort(-dsmp_score(belief, u).to_numpy())
@@ -487,6 +499,19 @@ def two_epoch_policy(df: pd.DataFrame, config: ValidationConfig, seed: int, budg
     }
 
 
+def two_epoch_reference_loss(df: pd.DataFrame, budget: float, capacity: float) -> float:
+    """Total true loss of the sequential perfect-information greedy reference over the two epochs."""
+    p_true = df["p_true"].to_numpy(dtype=float)
+    c_true = df["C_true"].to_numpy(dtype=float)
+    rto = df["RTO_norm"].to_numpy(dtype=float)
+    u = df["U_norm"].to_numpy(dtype=float)
+    o1 = _greedy_true_plan(df, p_true, c_true, rto, budget, capacity)
+    p1, rto1, u1, _ = _state_after(o1, p_true, rto, u, df["asset_id"])
+    o2 = _greedy_true_plan(df, p1, c_true, rto1, budget, capacity)
+    p2, rto2, _, _ = _state_after(o2, p1, rto1, u1, df["asset_id"])
+    return _loss(p1, c_true, rto1) + _loss(p2, c_true, rto2)
+
+
 def run_two_epoch_voi(portfolios: list[tuple[int, pd.DataFrame]], config: ValidationConfig, budget: float, out_dir: Path) -> pd.DataFrame:
     capacity = budget * config.capacity_per_budget
     policies = [
@@ -512,17 +537,7 @@ def run_two_epoch_voi(portfolios: list[tuple[int, pd.DataFrame]], config: Valida
     for resource_model in ["shared", "budget_only", "dedicated"]:
       for sigma_obs in [0.05, 0.20]:
         for seed, df in portfolios:
-            rng = np.random.default_rng(seed + 9001)
-            # two-epoch oracle
-            p_true = df["p_true"].to_numpy(dtype=float)
-            c_true = df["C_true"].to_numpy(dtype=float)
-            rto = df["RTO_norm"].to_numpy(dtype=float)
-            u = df["U_norm"].to_numpy(dtype=float)
-            o1 = _greedy_true_plan(df, p_true, c_true, rto, budget, capacity)
-            p1, rto1, u1, _ = _state_after(o1, p_true, rto, u, df["asset_id"])
-            o2 = _greedy_true_plan(df, p1, c_true, rto1, budget, capacity)
-            p2, rto2, _, _ = _state_after(o2, p1, rto1, u1, df["asset_id"])
-            oracle_total = _loss(p1, c_true, rto1) + _loss(p2, c_true, rto2)
+            oracle_total = two_epoch_reference_loss(df, budget, capacity)
             for name, rule, param in policies:
                 res = two_epoch_policy(df, config, seed, budget, capacity, rule, param, sigma_obs, np.random.default_rng(seed + 9001), resource_model=resource_model)
                 res.update({"policy": name, "rule": rule, "param": param, "sigma_obs": sigma_obs, "resource_model": resource_model, "seed": seed, "regret_total": res["total_loss"] - oracle_total, "oracle_total": oracle_total})

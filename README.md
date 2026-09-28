@@ -140,7 +140,7 @@ python scripts/run_robustness_experiments.py --seed 42 --n-assets 300 --seeds 50
 
 The verified outputs from that configuration are stored in `results/robustness_results/`.
 
-## Second-revision checks S11--S12
+## Second-revision checks S11--S14
 
 - S11: system-exposure form (Eq. 16) versus expected-loss form (Eq. 17) of the reduced score
   (epistemic term removed, remaining weights renormalized to 0.6875 and 0.3125, no graph terms),
@@ -149,12 +149,19 @@ The verified outputs from that configuration are stored in `results/robustness_r
   weight ratio;
 - S12: additivity check of Eq. (16) against the interaction-aware form, Eq. (18), and rank
   dependence among the three attributes;
-- S13: information carried by the recovery time: the S11 comparison repeated with recovery time
-  decoupled from the degradation state (within-class permutation,
-  `ValidationConfig(rto_degradation_coupling="permuted")`) and with recovery time observed with
-  lognormal error;
+- S13: information carried by the recovery time: the S11 comparison repeated (a) with the
+  degradation state that enters the recovery-time model permuted among the assets of each
+  structural class, while the network terms and the lognormal delay stay with the asset
+  (`ValidationConfig(rto_degradation_coupling="permuted")`), and (b) with the score using a
+  recovery time observed with multiplicative lognormal error, hours x exp(e), e ~ N(0, s^2),
+  s = 0.25 or 0.50 on the log scale (the loss keeps the true recovery time);
 - S14: inspection-targeting rules of the two-epoch protocol compared at equal numbers of
-  inspections (computed from `results/robustness_results/S8_two_epoch_voi_long.csv`).
+  inspections, in pairs that change one element of the targeting at a time: the epistemic
+  factor with the same consequence definition (with and without graph augmentation), the graph
+  augmentation of the consequence, and targeting against random selection. The rules of S8 are
+  recomputed with the same random streams, so their rows coincide with those of
+  `results/robustness_results/S8_two_epoch_voi_long.csv`; the check adds the rules
+  `top_consequence_no_graph` and `top_uncertainty_graph_consequence` to `two_epoch_policy`.
 
 The two-epoch protocol (S8) uses, in the second epoch, the recovery exposure after the
 first-epoch interventions; the stored S8 results were regenerated with this rule, which changes

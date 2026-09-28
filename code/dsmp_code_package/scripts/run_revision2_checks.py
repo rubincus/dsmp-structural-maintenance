@@ -1,0 +1,14 @@
+"""Run the second-revision checks (S11-S12)."""
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from dsmp.revision2_checks import main
+
+
+if __name__ == "__main__":
+    main()

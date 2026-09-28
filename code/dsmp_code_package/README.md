@@ -21,6 +21,7 @@ The code implements the full computational workflow:
 15. Unit tests for boundedness, monotonicity, and classical-risk limiting case.
 16. Multi-seed weight sensitivity, common-rule ablation, cross-seed recalibration, and base-rate diagnostics.
 17. Hazard-regime, probability-quality, cascade-aware, two-epoch information, condition-informed calibration, and common-rule budget robustness analyses.
+18. Second-revision checks: system-exposure versus expected-loss form across regimes and evidence quality, and additivity check against the interaction-aware form.
 
 ## Quick start
 
@@ -89,6 +90,9 @@ The validation pipeline writes:
 - `src/dsmp/robustness_experiments.py`: supplementary robustness experiments S5--S10.
 - `scripts/run_revision_experiments.py`: command-line driver for the supplementary analyses.
 - `scripts/run_robustness_experiments.py`: command-line driver for robustness experiments S5--S10.
+- `src/dsmp/revision2_checks.py`: second-revision checks S11--S12.
+- `scripts/run_revision2_checks.py`: command-line driver for the checks S11--S12.
+- `scripts/make_revision2_tables.py`: LaTeX rows of Table 17 from the S11 result files.
 - `scripts/regenerate_figures.py`: consistent-label figure regeneration from stored result tables.
 
 ## Supplementary multi-seed analyses
@@ -106,6 +110,15 @@ python scripts/run_robustness_experiments.py --seed 42 --n-assets 300 --seeds 50
 ```
 
 The run writes the S5--S10 CSV summaries, detailed seed-level records, and robustness figures to the selected output directory.
+
+## Second-revision checks
+
+```bash
+python scripts/run_revision2_checks.py --seed 42 --n-assets 300 --seeds 50 --mc-paths 256 --out ../../results/revision2_results
+python scripts/make_revision2_tables.py ../../results/revision2_results
+```
+
+The run writes the S11--S12 CSV summaries and seed-level records, and the second script writes the LaTeX rows of Table 17.
 
 ## Scientific note
 

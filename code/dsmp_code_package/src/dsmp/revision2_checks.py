@@ -25,6 +25,8 @@ S13. Information carried by the recovery time. In the generator the recovery tim
 S14. Inspection-targeting rules of the two-epoch protocol (S8) compared at equal numbers of
      inspections, in pairs that change one element of the targeting at a time: the epistemic
      factor with the same consequence definition, or the graph augmentation of the consequence.
+     A diagnostic records, per seed, the Spearman correlation across assets between the epistemic
+     term and the absolute error |P_platt - p_true| of the calibrated probability.
 
 All defaults of the validation protocol are unchanged; the reported regime is
 (degradation_scale, demand_scale) = (1, 1).
@@ -370,6 +372,25 @@ def run_inspection_rules(config: ValidationConfig, budget: float, out_dir: Path)
     return long
 
 
+def run_uncertainty_error_association(config: ValidationConfig, out_dir: Path) -> pd.DataFrame:
+    """Diagnostic of S14: per-seed Spearman correlations across assets (reported regime) between the
+    epistemic term U_norm, the degradation state X, and the error of the Platt-calibrated
+    probability relative to the simulated true probability, P_platt - p_true (absolute and signed)."""
+    rows = []
+    for k in range(config.n_seeds):
+        seed = config.seed + k
+        df, _ = generate_ground_truth_portfolio(seed, config)
+        signed = df["P_platt"] - df["p_true"]
+        rows.append({"seed": seed,
+                     "spearman_U_abs_error": float(spearmanr(df["U_norm"], signed.abs()).statistic),
+                     "spearman_U_signed_error": float(spearmanr(df["U_norm"], signed).statistic),
+                     "spearman_X_abs_error": float(spearmanr(df["X_current"], signed.abs()).statistic),
+                     "spearman_U_X": float(spearmanr(df["U_norm"], df["X_current"]).statistic)})
+    out = pd.DataFrame(rows)
+    out.to_csv(out_dir / "S14_uncertainty_error_association.csv", index=False)
+    return out
+
+
 def compare_inspection_rules(long: pd.DataFrame, out_dir: Path, seed: int = 42) -> pd.DataFrame:
     """Paired comparisons of INSPECTION_PAIRS (same number of inspected assets, same resources), with
     Holm adjustment within each resource model and noise level; also writes the per-rule medians."""
@@ -413,6 +434,7 @@ def run_all(out_dir: Path, config: ValidationConfig, budget: float = 12.0, skip:
     if "S14" not in skip:
         t0 = time.perf_counter()
         compare_inspection_rules(run_inspection_rules(config, budget, out_dir), out_dir, seed=config.seed)
+        run_uncertainty_error_association(config, out_dir)
         print(f"S14 inspection-rule comparison done in {time.perf_counter() - t0:.1f} s")
 
 

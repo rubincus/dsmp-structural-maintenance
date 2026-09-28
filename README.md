@@ -162,6 +162,10 @@ The verified outputs from that configuration are stored in `results/robustness_r
   recomputed with the same random streams, so their rows coincide with those of
   `results/robustness_results/S8_two_epoch_voi_long.csv`; the check adds the rules
   `top_consequence_no_graph` and `top_uncertainty_graph_consequence` to `two_epoch_policy`.
+  A diagnostic, `S14_uncertainty_error_association.csv`, records for each seed the Spearman
+  correlation across assets between the epistemic term and the absolute error
+  |P_platt - p_true| of the calibrated probability (also with the signed error and the
+  degradation state).
 
 The two-epoch protocol (S8) uses, in the second epoch, the recovery exposure after the
 first-epoch interventions; the stored S8 results were regenerated with this rule, which changes

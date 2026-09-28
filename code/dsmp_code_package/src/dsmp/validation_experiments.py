@@ -208,6 +208,12 @@ class ValidationConfig:
     demand_scale: float = 1.0
     # Multiplies the yearly degradation increments (history and Monte Carlo step); 1.0 = reported protocol.
     degradation_scale: float = 1.0
+    # Second-revision check (S13): "own" (reported protocol) builds the recovery time from the
+    # asset's own degradation state; "permuted" uses a within-class permutation of the degradation
+    # states, which keeps the class structure and the distribution of recovery times but removes
+    # their asset-level association with degradation. The permutation uses a separate random
+    # stream, so every other variable of the portfolio is unchanged.
+    rto_degradation_coupling: str = "own"
 
 
 def _beta_from_mean(mean: float, concentration: float, rng: np.random.Generator) -> float:
@@ -387,9 +393,18 @@ def generate_ground_truth_portfolio(seed: int, config: ValidationConfig) -> tupl
     cw = cw / cw.sum()
     c_true = np.clip(cw[0] * c_safety + cw[1] * c_operational + cw[2] * c_environmental, 0.0, 1.0)
 
+    x_rto = x
+    if config.rto_degradation_coupling == "permuted":
+        prng = np.random.default_rng(seed + 50_021)
+        x_rto = x.copy()
+        for cls in np.unique(classes):
+            idx = np.flatnonzero(classes == cls)
+            x_rto[idx] = x[idx][prng.permutation(len(idx))]
+    elif config.rto_degradation_coupling != "own":
+        raise ValueError(f"unknown rto_degradation_coupling: {config.rto_degradation_coupling}")
     rto = (
         _class_values(classes, "r0")
-        + _class_values(classes, "r1") * x
+        + _class_values(classes, "r1") * x_rto
         + _class_values(classes, "r2") * pi_arr
         + _class_values(classes, "r3") * sigma_arr
         + rng.lognormal(mean=np.log(4.0), sigma=0.45, size=n)

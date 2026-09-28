@@ -44,7 +44,7 @@ LABELS = {
     "voi_only": "VoI-only inspection",
     "greedy_cost_risk": "Greedy probability--consequence",
     "robust_topsis": "Robust TOPSIS MCDA",
-    "true_probability_upper_bound": "True-probability upper bound",
+    "true_probability_upper_bound": "True-priority reference",
 }
 ORDER = list(LABELS)
 
@@ -74,6 +74,45 @@ def plot_calibration(tables: Path, path: Path) -> None:
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.legend(loc="upper left", frameon=True)
+    _save(fig, path)
+
+
+def plot_regret_common_rule(tables: Path, common_rule: Path, path: Path) -> None:
+    """Figure 12 of the second revision: median regret against budget for the main policies,
+    including the RCM-like rule under the common action rule and the condition-informed
+    configuration of Section 6.6 (from S10_budget_grid_common_rule.csv); the remaining
+    policies are reported in Table 8."""
+    m = pd.read_csv(tables / "validation_metrics_long.csv").dropna(subset=["regret"])
+    c = pd.read_csv(common_rule).groupby("budget", as_index=False).median(numeric_only=True)
+
+    def med(method: str) -> pd.DataFrame:
+        return m[m["method"] == method].groupby("budget", as_index=False)["regret"].median()
+
+    fig, ax = plt.subplots(figsize=(5.0, 4.9))
+    ax.plot(c["budget"], c["dsmp_cov"], label="DSMP $\\eta=0$, no graph, cond.-informed $P$", color="#d62728", lw=2.6, marker="o", markersize=5)
+    for method, lab, style in [
+        ("dsmp_direct_recalibrated", "DSMP direct, Platt (reported)", dict(color="#ff7f0e", lw=2.2, marker="o")),
+        ("dsmp_direct", "DSMP direct, uncalibrated", dict(color="#ff7f0e", lw=1.3, ls="--", marker="o")),
+    ]:
+        g = med(method)
+        ax.plot(g["budget"], g["regret"], label=lab, markersize=4.5, **style)
+    ax.plot(c["budget"], c["rcm_enum"], label="RCM-like, common action rule", color="#555555", lw=1.9, marker="x", markersize=5.5)
+    for method, lab, style in [
+        ("static_rcm", "RCM-like, threshold-mapped", dict(color="#7f7f7f", lw=1.3, ls=":", marker="x")),
+        ("greedy_cost_risk", "Greedy probability–consequence", dict(color="#2ca02c", lw=1.7, marker="^")),
+        ("robust_topsis", "Robust TOPSIS MCDA", dict(color="#9467bd", lw=1.7, marker="D")),
+        ("dsmp_direct_true_probability", "DSMP direct, true $P_f$ (reference)", dict(color="black", lw=1.3, ls="--", marker="*")),
+    ]:
+        g = med(method)
+        ax.plot(g["budget"], g["regret"], label=lab, markersize=4.5, **style)
+    ax.set_xlabel("Budget (replacement-equivalent units)")
+    ax.set_ylabel("Median regret over 50 seeds")
+    ax.set_yscale("log")
+    ax.set_yticks([0.1, 0.2, 0.5, 1, 2, 5, 10])
+    ax.set_yticklabels(["0.1", "0.2", "0.5", "1", "2", "5", "10"])
+    ax.set_xticks([8, 12, 16, 20])
+    ax.grid(alpha=0.25, which="major")
+    ax.legend(loc="upper center", bbox_to_anchor=(0.45, -0.16), ncol=2, frameon=False, fontsize=8.6, columnspacing=1.0, handlelength=2.2)
     _save(fig, path)
 
 
@@ -128,7 +167,7 @@ def plot_rank_metrics(tables: Path, path: Path) -> None:
     ax.set_xlim(0, 1.0)
     ax.set_xlabel("Median value over 50 seeds (against true preventable-loss ranking)")
     ax.grid(axis="x", alpha=0.25)
-    ax.legend(loc="lower right", frameon=True)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.09), ncol=3, frameon=False)
     _save(fig, path)
 
 
@@ -199,12 +238,16 @@ def main() -> None:
     parser.add_argument("--tables", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--methodological", action="store_true", help="also regenerate Figures 3 and 4 from the seed-42 validation portfolio")
+    parser.add_argument("--common-rule", type=Path, default=None, help="S10_budget_grid_common_rule.csv; if given, Figure 12 shows the main policies under the common action rule")
     args = parser.parse_args()
     out = args.out
     if args.methodological:
         plot_methodological_figures(out)
     plot_calibration(args.tables, out / "validation" / "figure_v2_calibration_curve.pdf")
-    plot_regret(args.tables, out / "validation" / "figure_v3_regret_vs_budget.pdf")
+    if args.common_rule is not None:
+        plot_regret_common_rule(args.tables, args.common_rule, out / "validation" / "figure_v3_regret_vs_budget.pdf")
+    else:
+        plot_regret(args.tables, out / "validation" / "figure_v3_regret_vs_budget.pdf")
     plot_rank_metrics(args.tables, out / "validation" / "figure_v4_topk_rank_comparison.pdf")
     plot_voi_map(out / "validation" / "figure_v5_voi_gate_decision_map.pdf")
     plot_rank_reversal(args.tables, out / "validation" / "figure_v8_rank_reversal_frequency.pdf")

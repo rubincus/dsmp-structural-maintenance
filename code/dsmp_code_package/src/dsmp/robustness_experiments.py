@@ -419,8 +419,10 @@ def two_epoch_policy(df: pd.DataFrame, config: ValidationConfig, seed: int, budg
     elif rule == "uncalibrated":
         belief = df["P_predictive"].to_numpy(dtype=float).copy()
 
-    def dsmp_score(b: np.ndarray, uu: np.ndarray) -> pd.Series:
-        return pd.Series(np.clip(alpha * b * c_graph + rho * rto_graph + eta * uu, 0, 1), index=df.index)
+    cascade = df["cascade_susceptibility"].to_numpy(dtype=float)
+
+    def dsmp_score(b: np.ndarray, uu: np.ndarray, rr_graph: np.ndarray = rto_graph) -> pd.Series:
+        return pd.Series(np.clip(alpha * b * c_graph + rho * rr_graph + eta * uu, 0, 1), index=df.index)
 
     def greedy_score(b: np.ndarray) -> pd.Series:
         return pd.Series(np.clip(b * df["C_norm"].to_numpy(dtype=float), 0, 1), index=df.index)
@@ -465,8 +467,11 @@ def two_epoch_policy(df: pd.DataFrame, config: ValidationConfig, seed: int, budg
         observed = np.clip(p_true[inspect] * factor1[inspect] + rng.normal(0.0, sigma_obs, size=int(inspect.sum())), 0.0, 1.0)
         belief2 = belief2.copy()
         belief2[inspect] = observed
-    # ---- epoch 2: direct interventions with the updated beliefs
-    score2 = greedy_score(belief2) if rule == "greedy" else dsmp_score(belief2, u1)
+    # ---- epoch 2: direct interventions with the updated beliefs. The recovery exposure entering
+    # the score is the one after the first-epoch interventions (known effect model), graph-augmented
+    # as in Eq. (27), consistently with the updated failure belief and epistemic term.
+    rto1_graph = np.clip(rto1 + config.graph_zeta_r * cascade, 0.0, 1.0)
+    score2 = greedy_score(belief2) if rule == "greedy" else dsmp_score(belief2, u1, rto1_graph)
     plan2 = _direct_plan_from_score(df, score2, budget, capacity)
     p2, rto2, u2, _ = _state_after(plan2, p1, rto1, u1, df["asset_id"])
     loss2 = _loss(p2, c_true, rto2)
@@ -548,8 +553,8 @@ def run_two_epoch_voi(portfolios: list[tuple[int, pd.DataFrame]], config: Valida
 
 
 def plot_two_epoch(summary: pd.DataFrame, path: Path, sigma: float = 0.05) -> None:
-    titles = {"shared": "(a) Inspection uses maintenance budget and crew (Table 4)", "budget_only": "(b) Inspection uses the maintenance budget only", "dedicated": "(c) Dedicated inspection resource"}
-    fig, axes = plt.subplots(1, 3, figsize=(15.5, 4.6))
+    titles = {"shared": "(a) Inspection uses budget and crew", "budget_only": "(b) Inspection uses the budget only", "dedicated": "(c) Dedicated inspection resource"}
+    fig, axes = plt.subplots(1, 3, figsize=(12.5, 4.2))
     handles = None
     for ax, resource_model in zip(axes, ["shared", "budget_only", "dedicated"]):
         s = summary[(summary["sigma_obs"] == sigma) & (summary["resource_model"] == resource_model)]
@@ -558,7 +563,7 @@ def plot_two_epoch(summary: pd.DataFrame, path: Path, sigma: float = 0.05) -> No
         ref_g = float(s[s["policy"] == "direct_only_greedy"]["regret_median"].iloc[0])
         ax.axhline(ref_g, color="#2ca02c", lw=1.4, ls="--", label="Direct only, greedy probability–consequence")
         ref_t = float(s[s["policy"] == "direct_only_true_probability"]["regret_median"].iloc[0])
-        ax.axhline(ref_t, color="black", lw=1.2, ls=":", label="Direct only with true $P_f$ (upper bound)")
+        ax.axhline(ref_t, color="black", lw=1.2, ls=":", label="Direct only with true $P_f$ (reference)")
         for rule, label, style in [
             ("top_consequence", "Inspect top-$n$ by consequence, then act", dict(color="#9467bd", marker="D")),
             ("top_uncertainty_consequence", "Inspect top-$n$ by uncertainty × consequence, then act", dict(color="#ff7f0e", marker="^")),
@@ -574,8 +579,8 @@ def plot_two_epoch(summary: pd.DataFrame, path: Path, sigma: float = 0.05) -> No
         ax.grid(alpha=0.25)
         if handles is None:
             handles, labels = ax.get_legend_handles_labels()
-    axes[0].set_ylabel("Two-epoch regret vs. sequential perfect-information reference\n(normalized expected-loss units; median, 95% CI)")
-    fig.legend(handles, labels, loc="lower center", ncol=4, frameon=False, fontsize=9, bbox_to_anchor=(0.5, -0.08))
+    axes[0].set_ylabel("Two-epoch regret\n(median, 95% CI)")
+    fig.legend(handles, labels, loc="lower center", ncol=3, frameon=False, fontsize=9.5, bbox_to_anchor=(0.5, -0.16))
     fig.tight_layout()
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, bbox_inches="tight")
@@ -589,32 +594,32 @@ def plot_hazard_regimes_combined(s5: pd.DataFrame, s9: pd.DataFrame, path: Path)
     fig, axes = plt.subplots(1, 2, figsize=(12.0, 4.5))
     ax = axes[0]
     for frame, col, label, style in [
-        (b, "regret_dsmp_sys0_covariate", "DSMP, $\\eta=0$, no graph terms, covariate-calibrated $P$ (Eq. 3 with severity)", dict(color="#d62728", marker="o", lw=2.6)),
-        (b, "regret_dsmp_sys_covariate", "DSMP reported configuration, covariate-calibrated $P$", dict(color="#d62728", marker="o", lw=1.4, ls="--")),
-        (b, "regret_dsmp_sys0_platt", "DSMP, $\\eta=0$, no graph terms, Platt-recalibrated count proxy", dict(color="#ff7f0e", marker="s", lw=1.4, ls="--")),
-        (a, "regret_dsmp_direct_recalibrated", "DSMP reported configuration, Platt-recalibrated count proxy", dict(color="#ff7f0e", marker="s", lw=2.0)),
-        (b, "regret_greedy_covariate", "Greedy probability–consequence, covariate-calibrated $P$", dict(color="#2ca02c", marker="^", lw=1.6)),
-        (a, "regret_greedy_cost_risk", "Greedy probability–consequence, uncalibrated proxy", dict(color="#2ca02c", marker="^", lw=1.4, ls="--")),
+        (b, "regret_dsmp_sys0_covariate", "DSMP, $\\eta=0$, no graph terms, condition-informed $P$", dict(color="#d62728", marker="o", lw=2.6)),
+        (b, "regret_dsmp_sys_covariate", "DSMP reported configuration, condition-informed $P$", dict(color="#d62728", marker="o", lw=1.4, ls="--")),
+        (b, "regret_dsmp_sys0_platt", "DSMP, $\\eta=0$, no graph terms, count proxy", dict(color="#ff7f0e", marker="s", lw=1.4, ls="--")),
+        (a, "regret_dsmp_direct_recalibrated", "DSMP reported configuration, count proxy", dict(color="#ff7f0e", marker="s", lw=2.0)),
+        (b, "regret_greedy_covariate", "Greedy prob.–cons., condition-informed $P$", dict(color="#2ca02c", marker="^", lw=1.6)),
+        (a, "regret_greedy_cost_risk", "Greedy prob.–cons., uncalibrated proxy", dict(color="#2ca02c", marker="^", lw=1.4, ls="--")),
         (a, "regret_robust_topsis", "Robust TOPSIS MCDA", dict(color="#9467bd", marker="D", lw=1.4, ls="--")),
-        (b, "regret_static_rcm", "Static RCM-like (severity and class), same action rule", dict(color="#7f7f7f", marker="x", lw=1.8, ls=":")),
-        (b, "regret_dsmp_exp_true_probability", "DSMP with true $P_f$ (upper bound)", dict(color="black", marker="*", lw=1.2, ls=":")),
+        (b, "regret_static_rcm", "Static RCM-like, common action rule", dict(color="#7f7f7f", marker="x", lw=1.8, ls=":")),
+        (b, "regret_dsmp_exp_true_probability", "Expected-loss form with true $P_f$ (reference)", dict(color="black", marker="*", lw=1.2, ls=":")),
     ]:
         ax.plot(a["event_rate"], frame[f"{col}_normalized"], label=label, markersize=5, **style)
     ax.set_xlabel("Median simulated event rate of the regime")
-    ax.set_ylabel("Normalized regret at budget 12\n(0 = perfect-information greedy reference, 1 = no action; seed-level median)")
+    ax.set_ylabel("Normalized regret at budget 12\n(0 = reference plan, 1 = no action)")
     ax.set_xscale("log")
     ax.set_xticks([0.05, 0.1, 0.2, 0.35, 0.5, 0.76])
     ax.set_xticklabels(["0.05", "0.1", "0.2", "0.35", "0.5", "0.76"])
     ax.set_ylim(0, 0.8)
     ax.grid(alpha=0.25)
     ax = axes[1]
-    ax.plot(a["event_rate"], b["bss_covariate"], marker="o", lw=2.4, color="#d62728", label="Covariate-calibrated $P$ (Eq. 3 with severity), within-seed cross-fit")
-    ax.plot(a["event_rate"], b["bss_covariate_cross_seed"], marker="o", lw=1.4, ls="--", color="#d62728", label="Covariate-calibrated $P$, trained on independent seeds")
-    ax.plot(a["event_rate"], a["bss_platt"], marker="s", lw=2.0, color="#ff7f0e", label="Platt-recalibrated count proxy (reported)")
+    ax.plot(a["event_rate"], b["bss_covariate"], marker="o", lw=2.4, color="#d62728", label="Condition-informed $P$, within-seed cross-fit")
+    ax.plot(a["event_rate"], b["bss_covariate_cross_seed"], marker="o", lw=1.4, ls="--", color="#d62728", label="Condition-informed $P$, independent seeds")
+    ax.plot(a["event_rate"], a["bss_platt"], marker="s", lw=2.0, color="#ff7f0e", label="Count proxy, Platt-recalibrated")
     ax.plot(a["event_rate"], a["bss_true"], marker="*", lw=1.2, ls=":", color="black", label="Simulated true probability")
     ax.axhline(0.0, color="gray", lw=1, ls=":")
     ax.set_xlabel("Median simulated event rate of the regime")
-    ax.set_ylabel("Brier skill score vs. constant base-rate predictor\n(seed-level median)")
+    ax.set_ylabel("Brier skill score\n(vs. base-rate predictor)")
     ax.set_xscale("log")
     ax.set_xticks([0.05, 0.1, 0.2, 0.35, 0.5, 0.76])
     ax.set_xticklabels(["0.05", "0.1", "0.2", "0.35", "0.5", "0.76"])
@@ -622,7 +627,7 @@ def plot_hazard_regimes_combined(s5: pd.DataFrame, s9: pd.DataFrame, path: Path)
     ax.grid(alpha=0.25)
     h0, l0 = axes[0].get_legend_handles_labels()
     h1, l1 = axes[1].get_legend_handles_labels()
-    fig.legend(h0 + h1, l0 + l1, loc="lower center", ncol=2, frameon=False, fontsize=8.6, bbox_to_anchor=(0.5, -0.30))
+    fig.legend(h0 + h1, l0 + l1, loc="lower center", ncol=3, frameon=False, fontsize=9, bbox_to_anchor=(0.5, -0.24))
     fig.tight_layout()
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, bbox_inches="tight")

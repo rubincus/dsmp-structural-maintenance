@@ -14,6 +14,12 @@ S12. Additivity check of the score, Eq. (16): interaction-aware form, Eq. (18), 
      risk--uncertainty (chi) and risk--recovery (psi) interaction weights, divided by
      (1 + chi + psi) so that it stays in [0, 1]; and the rank dependence among the three
      attributes of the score.
+S13. Information carried by the recovery time. In the generator the recovery time grows with
+     the degradation state, so it is itself a condition indicator. The check repeats the
+     comparison of the two reduced forms (and of the greedy rule without recovery term) when
+     (a) the recovery time is decoupled from the asset's degradation state by a within-class
+     permutation (ValidationConfig.rto_degradation_coupling = "permuted"), and (b) the score
+     uses a recovery time observed with lognormal error (the loss keeps the true one).
 
 All defaults of the validation protocol are unchanged; the reported regime is
 (degradation_scale, demand_scale) = (1, 1).
@@ -223,6 +229,121 @@ def run_additivity_check(config: ValidationConfig, budget: float, out_dir: Path)
     return summary, corr_summary
 
 
+# ----------------------------------------------------------------------------
+# S13: information carried by the recovery time
+# ----------------------------------------------------------------------------
+RTO_VARIANTS = ("reported generator", "RTO decoupled from degradation", "RTO observed, lognormal error 0.25", "RTO observed, lognormal error 0.50")
+
+
+def _observed_rto(df: pd.DataFrame, sigma: float, seed: int) -> pd.Series:
+    """Recovery time observed with multiplicative lognormal error, normalized with the reference bounds (0, 96) h."""
+    rng = np.random.default_rng(seed + 60_000 + int(round(100 * sigma)))
+    hours = df["delta_RTO_hours"].to_numpy(dtype=float) * np.exp(rng.normal(0.0, sigma, size=len(df)))
+    return pd.Series(np.clip(hours / 96.0, 0.0, 1.0), index=df.index)
+
+
+def run_recovery_information_check(config: ValidationConfig, budget: float, out_dir: Path) -> pd.DataFrame:
+    capacity = budget * config.capacity_per_budget
+    ratio = 0.25 / 0.55
+    records = []
+    for regime, scales in REGIMES.items():
+        cfg = ValidationConfig(seed=config.seed, n_assets=config.n_assets, n_seeds=config.n_seeds, mc_paths=config.mc_paths, **scales)
+        cfg_d = ValidationConfig(seed=config.seed, n_assets=config.n_assets, n_seeds=config.n_seeds, mc_paths=config.mc_paths,
+                                 rto_degradation_coupling="permuted", **scales)
+        for offset in range(cfg.n_seeds):
+            seed = cfg.seed + offset
+            base, _ = generate_ground_truth_portfolio(seed, cfg)
+            decoupled, _ = generate_ground_truth_portfolio(seed, cfg_d)
+            refs = {}
+            for name, frame in (("base", base), ("decoupled", decoupled)):
+                refs[name] = evaluate_plan(frame, oracle_plan(frame, budget, capacity))["loss_after"]
+            probs = {
+                "base": {"platt": base["P_platt"], "covariate": pd.Series(cross_fitted_covariate_recalibration(base, seed), index=base.index)},
+                "decoupled": {"platt": decoupled["P_platt"], "covariate": pd.Series(cross_fitted_covariate_recalibration(decoupled, seed), index=decoupled.index)},
+            }
+            settings = {
+                RTO_VARIANTS[0]: ("base", base["RTO_norm"]),
+                RTO_VARIANTS[1]: ("decoupled", decoupled["RTO_norm"]),
+                RTO_VARIANTS[2]: ("base", _observed_rto(base, 0.25, seed)),
+                RTO_VARIANTS[3]: ("base", _observed_rto(base, 0.50, seed)),
+            }
+            for variant, (which, rto_used) in settings.items():
+                frame = base if which == "base" else decoupled
+                row0 = {"regime": regime, "seed": seed, "variant": variant,
+                        "spearman_rto_used_p_true": float(spearmanr(rto_used, frame["p_true"]).statistic),
+                        "spearman_rto_used_x": float(spearmanr(rto_used, frame["X_current"]).statistic)}
+                for pname, p in probs[which].items():
+                    row = dict(row0, probability=pname)
+                    scores = {
+                        "sys": reduced_score(p, frame["C_norm"], rto_used, ratio, "sys"),
+                        "exp": reduced_score(p, frame["C_norm"], rto_used, ratio, "exp"),
+                        "no_recovery": (p * frame["C_norm"]).clip(0.0, 1.0),
+                    }
+                    for form, score in scores.items():
+                        ev = evaluate_plan(frame, _direct_plan_from_score(frame, score, budget, capacity))
+                        row[f"regret_{form}"] = ev["loss_after"] - refs[which]
+                    records.append(row)
+        print(f"  S13 regime {regime} done")
+    long = pd.DataFrame(records)
+    long.to_csv(out_dir / "S13_recovery_information_long.csv", index=False)
+    rows = []
+    for (variant, regime, prob), g in long.groupby(["variant", "regime", "probability"], sort=False):
+        g = g.sort_values("seed")
+        row = {"variant": variant, "regime": regime, "probability": prob, "n_seeds": len(g),
+               "spearman_rto_used_p_true": float(g["spearman_rto_used_p_true"].median()),
+               "spearman_rto_used_x": float(g["spearman_rto_used_x"].median())}
+        for form in ("sys", "exp", "no_recovery"):
+            s = _median_summary(g[f"regret_{form}"].to_numpy(), seed=config.seed)
+            row[f"regret_{form}_median"], row[f"regret_{form}_ci_low"], row[f"regret_{form}_ci_high"] = s["median"], s["ci_low"], s["ci_high"]
+        for other in ("exp", "no_recovery"):
+            pr = _paired(g["regret_sys"].to_numpy(), g[f"regret_{other}"].to_numpy(), seed=config.seed)
+            row[f"effect_{other}_minus_sys"], row[f"effect_ci_low_{other}"], row[f"effect_ci_high_{other}"] = pr["median_effect"], pr["effect_ci_low"], pr["effect_ci_high"]
+            row[f"p_{other}"], row[f"sys_wins_vs_{other}"] = pr["p_value"], pr["win_fraction"]
+        rows.append(row)
+    summary = pd.DataFrame(rows)
+    for variant in summary["variant"].unique():
+        mask = summary["variant"] == variant
+        for other in ("exp", "no_recovery"):
+            summary.loc[mask, f"holm_p_{other}"] = holm_bonferroni_adjust(summary.loc[mask, f"p_{other}"].to_numpy(dtype=float))
+    summary.to_csv(out_dir / "S13_recovery_information_summary.csv", index=False)
+    return summary
+
+
+# ----------------------------------------------------------------------------
+# S14: inspection-targeting rules compared at equal numbers of inspections (from the S8 records)
+# ----------------------------------------------------------------------------
+INSPECTION_PAIRS = [
+    ("inspect_top30_uncertainty_x_consequence", "inspect_top30_consequence"),
+    ("inspect_top60_uncertainty_x_consequence", "inspect_top60_consequence"),
+    ("inspect_top60_consequence", "inspect_random60"),
+    ("inspect_top60_uncertainty_x_consequence", "inspect_random60"),
+    ("inspect_top60_score", "inspect_random60"),
+]
+
+
+def compare_inspection_rules(s8_long_path: Path, out_dir: Path, sigma_obs: float = 0.05, seed: int = 42) -> pd.DataFrame:
+    """Paired comparison of inspection-targeting rules with the same number of inspected assets and
+    the same resources; effect = regret(first rule) - regret(second rule), negative = first rule better."""
+    long = pd.read_csv(s8_long_path)
+    long = long[long["sigma_obs"] == sigma_obs]
+    rows = []
+    for resource_model, g in long.groupby("resource_model", sort=False):
+        piv = g.pivot(index="seed", columns="policy", values="regret_total")
+        block = []
+        for a, b in INSPECTION_PAIRS:
+            pr = _paired(piv[b].to_numpy(), piv[a].to_numpy(), seed=seed)
+            block.append({"resource_model": resource_model, "rule": a, "compared_with": b,
+                          "regret_rule_median": float(piv[a].median()), "regret_compared_median": float(piv[b].median()),
+                          "effect_rule_minus_compared": pr["median_effect"], "effect_ci_low": pr["effect_ci_low"], "effect_ci_high": pr["effect_ci_high"],
+                          "p_value": pr["p_value"], "rule_better_fraction": float(np.mean(piv[a].to_numpy() < piv[b].to_numpy()))})
+        block = pd.DataFrame(block)
+        block["holm_p"] = holm_bonferroni_adjust(block["p_value"].to_numpy(dtype=float))
+        rows.append(block)
+    out = pd.concat(rows, ignore_index=True)
+    out.to_csv(out_dir / "S14_inspection_rules_equal_n.csv", index=False)
+    return out
+
+
 def run_all(out_dir: Path, config: ValidationConfig, budget: float = 12.0, skip: tuple[str, ...] = ()) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     if "S11" not in skip:
@@ -233,10 +354,18 @@ def run_all(out_dir: Path, config: ValidationConfig, budget: float = 12.0, skip:
         t0 = time.perf_counter()
         run_additivity_check(config, budget, out_dir)
         print(f"S12 additivity check done in {time.perf_counter() - t0:.1f} s")
+    if "S13" not in skip:
+        t0 = time.perf_counter()
+        run_recovery_information_check(config, budget, out_dir)
+        print(f"S13 recovery-information check done in {time.perf_counter() - t0:.1f} s")
+    s8_long = out_dir.parent / "robustness_results" / "S8_two_epoch_voi_long.csv"
+    if "S14" not in skip and s8_long.exists():
+        compare_inspection_rules(s8_long, out_dir, seed=config.seed)
+        print("S14 inspection-rule comparison written")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the second-revision checks (S11-S12).")
+    parser = argparse.ArgumentParser(description="Run the second-revision checks (S11-S13).")
     parser.add_argument("--out", type=Path, default=Path("revision2_results"))
     parser.add_argument("--seed", type=int, default=ValidationConfig().seed)
     parser.add_argument("--n-assets", type=int, default=ValidationConfig().n_assets)
